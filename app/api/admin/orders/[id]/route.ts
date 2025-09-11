@@ -93,8 +93,8 @@ export async function PATCH(
       .eq('id', id)
       .select(`
         *,
-        customers!inner(id, first_name, last_name, email, phone),
-        order_items!inner(
+        customers(id, first_name, last_name, email, phone),
+        order_items(
           id,
           product_name,
           product_sku,
