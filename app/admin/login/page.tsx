@@ -23,6 +23,7 @@ export default function AdminAuth() {
   const [activeTab, setActiveTab] = useState('login')
   const router = useRouter()
   const supabase = createSupabaseClient()
+  const isProduction = process.env.NODE_ENV === 'production'
 
   // Check if there are any admin users on component mount
   useEffect(() => {
@@ -44,15 +45,17 @@ export default function AdminAuth() {
       
       setHasAdmins(result.hasAdmins)
       
-      // If no admins exist, switch to registration tab
-      if (!result.hasAdmins) {
+      // If no admins exist and not in production, switch to registration tab
+      if (!result.hasAdmins && !isProduction) {
         setActiveTab('register')
       }
     } catch (err) {
       console.error('Error checking admin users:', err instanceof Error ? err.message : err)
-      // Fallback to registration mode if there's any error
+      // Fallback to registration mode if there's any error and not in production
       setHasAdmins(false)
-      setActiveTab('register')
+      if (!isProduction) {
+        setActiveTab('register')
+      }
     }
   }
 
@@ -231,27 +234,31 @@ export default function AdminAuth() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
-            {!hasAdmins ? 'Create Admin Account' : 'Admin Authentication'}
+            {!hasAdmins && !isProduction ? 'Create Admin Account' : 'Admin Authentication'}
           </CardTitle>
           <CardDescription className="text-center">
-            {!hasAdmins 
+            {!hasAdmins && !isProduction
               ? 'No admin account exists. Create the first admin account to get started.'
-              : 'Access the admin panel or register for approval'
+              : isProduction 
+                ? 'Access the admin panel'
+                : 'Access the admin panel or register for approval'
             }
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login" disabled={!hasAdmins}>
-                <LogIn className="w-4 h-4 mr-2" />
-                Login
-              </TabsTrigger>
-              <TabsTrigger value="register">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Register
-              </TabsTrigger>
-            </TabsList>
+            {!isProduction && (
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="login" disabled={!hasAdmins}>
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Login
+                </TabsTrigger>
+                <TabsTrigger value="register">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Register
+                </TabsTrigger>
+              </TabsList>
+            )}
 
             {(error || success) && (
               <Alert variant={error ? "destructive" : "default"} className="mt-4">
@@ -298,31 +305,36 @@ export default function AdminAuth() {
                   )}
                 </Button>
                 
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={handleResendConfirmation}
-                  disabled={loading || !email}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    'Resend Confirmation Email'
-                   )}
-                 </Button>
+                {!isProduction && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={handleResendConfirmation}
+                    disabled={loading || !email}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Resend Confirmation Email'
+                     )}
+                   </Button>
+                )}
                </form>
                
-               <div className="text-sm text-gray-600 text-center mt-4">
-                 <p>Having trouble logging in?</p>
-                 <p className="mt-1">Make sure you've confirmed your email address. Check your inbox and spam folder for the confirmation email.</p>
-               </div>
+               {!isProduction && (
+                 <div className="text-sm text-gray-600 text-center mt-4">
+                   <p>Having trouble logging in?</p>
+                   <p className="mt-1">Make sure you've confirmed your email address. Check your inbox and spam folder for the confirmation email.</p>
+                 </div>
+               )}
              </TabsContent>
 
-            <TabsContent value="register" className="space-y-4 mt-4">
+            {!isProduction && (
+              <TabsContent value="register" className="space-y-4 mt-4">
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="register-name">Full Name</Label>
@@ -395,6 +407,7 @@ export default function AdminAuth() {
                 )}
               </form>
             </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>
