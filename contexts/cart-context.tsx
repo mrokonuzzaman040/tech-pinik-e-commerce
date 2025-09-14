@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback, useRef } from 'react'
 
 interface CartItem {
   id: string
@@ -50,6 +50,8 @@ export function CartProvider({ children }: CartProviderProps) {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string>('')
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isUpdatingRef = useRef(false)
 
   // Generate or get session ID
   useEffect(() => {
@@ -68,8 +70,8 @@ export function CartProvider({ children }: CartProviderProps) {
     }
   }, [sessionId])
 
-  const refreshCart = async () => {
-    if (!sessionId) return
+  const refreshCart = useCallback(async () => {
+    if (!sessionId || isUpdatingRef.current) return
     
     try {
       setIsLoading(true)
@@ -86,13 +88,24 @@ export function CartProvider({ children }: CartProviderProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [sessionId])
 
-  const addToCart = async (productId: string, quantity: number = 1): Promise<boolean> => {
+  const addToCart = useCallback(async (productId: string, quantity: number = 1): Promise<boolean> => {
     if (!sessionId) return false
     
+    // Optimistic update
+    const existingItem = cartItems.find(item => item.product_id === productId)
+    if (existingItem) {
+      const updatedItems = cartItems.map(item => 
+        item.product_id === productId 
+          ? { ...item, quantity: item.quantity + quantity }
+          : item
+      )
+      setCartItems(updatedItems)
+    }
+    
     try {
-      setIsLoading(true)
+      isUpdatingRef.current = true
       const response = await fetch('/api/cart', {
         method: 'POST',
         headers: {
@@ -108,27 +121,43 @@ export function CartProvider({ children }: CartProviderProps) {
       const data = await response.json()
       
       if (response.ok) {
-        await refreshCart()
+        // Debounced refresh to avoid multiple API calls
+        if (debounceTimeoutRef.current) {
+          clearTimeout(debounceTimeoutRef.current)
+        }
+        debounceTimeoutRef.current = setTimeout(() => {
+          refreshCart()
+        }, 300)
         return true
       } else {
+        // Revert optimistic update on error
+        await refreshCart()
         console.error('Failed to add to cart:', data.error)
         alert(data.error || 'Failed to add item to cart')
         return false
       }
     } catch (error) {
+      // Revert optimistic update on error
+      await refreshCart()
       console.error('Error adding to cart:', error)
       alert('Failed to add item to cart')
       return false
     } finally {
-      setIsLoading(false)
+      isUpdatingRef.current = false
     }
-  }
+  }, [sessionId, cartItems, refreshCart])
 
-  const updateCartItem = async (cartItemId: string, quantity: number): Promise<boolean> => {
+  const updateCartItem = useCallback(async (cartItemId: string, quantity: number): Promise<boolean> => {
     if (!sessionId) return false
     
+    // Optimistic update
+    const updatedItems = cartItems.map(item => 
+      item.id === cartItemId ? { ...item, quantity } : item
+    )
+    setCartItems(updatedItems)
+    
     try {
-      setIsLoading(true)
+      isUpdatingRef.current = true
       const response = await fetch('/api/cart', {
         method: 'PUT',
         headers: {
@@ -144,27 +173,41 @@ export function CartProvider({ children }: CartProviderProps) {
       const data = await response.json()
       
       if (response.ok) {
-        await refreshCart()
+        // Debounced refresh
+        if (debounceTimeoutRef.current) {
+          clearTimeout(debounceTimeoutRef.current)
+        }
+        debounceTimeoutRef.current = setTimeout(() => {
+          refreshCart()
+        }, 300)
         return true
       } else {
+        // Revert optimistic update on error
+        await refreshCart()
         console.error('Failed to update cart:', data.error)
         alert(data.error || 'Failed to update cart')
         return false
       }
     } catch (error) {
+      // Revert optimistic update on error
+      await refreshCart()
       console.error('Error updating cart:', error)
       alert('Failed to update cart')
       return false
     } finally {
-      setIsLoading(false)
+      isUpdatingRef.current = false
     }
-  }
+  }, [sessionId, cartItems, refreshCart])
 
-  const removeFromCart = async (cartItemId: string): Promise<boolean> => {
+  const removeFromCart = useCallback(async (cartItemId: string): Promise<boolean> => {
     if (!sessionId) return false
     
+    // Optimistic update
+    const updatedItems = cartItems.filter(item => item.id !== cartItemId)
+    setCartItems(updatedItems)
+    
     try {
-      setIsLoading(true)
+      isUpdatingRef.current = true
       const response = await fetch(`/api/cart?cart_item_id=${cartItemId}&session_id=${sessionId}`, {
         method: 'DELETE',
       })
@@ -172,33 +215,60 @@ export function CartProvider({ children }: CartProviderProps) {
       const data = await response.json()
       
       if (response.ok) {
-        await refreshCart()
+        // Debounced refresh
+        if (debounceTimeoutRef.current) {
+          clearTimeout(debounceTimeoutRef.current)
+        }
+        debounceTimeoutRef.current = setTimeout(() => {
+          refreshCart()
+        }, 300)
         return true
       } else {
+        // Revert optimistic update on error
+        await refreshCart()
         console.error('Failed to remove from cart:', data.error)
         alert(data.error || 'Failed to remove item from cart')
         return false
       }
     } catch (error) {
+      // Revert optimistic update on error
+      await refreshCart()
       console.error('Error removing from cart:', error)
       alert('Failed to remove item from cart')
       return false
     } finally {
-      setIsLoading(false)
+      isUpdatingRef.current = false
     }
-  }
+  }, [sessionId, cartItems, refreshCart])
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCartItems([])
-  }
+  }, [])
 
-  const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0)
-  const cartTotal = cartItems.reduce((total, item) => {
-    const price = item.products.sale_price || item.products.price
-    return total + (price * item.quantity)
-  }, 0)
+  // Memoized calculations to prevent unnecessary re-renders
+  const cartCount = useMemo(() => 
+    cartItems.reduce((total, item) => total + item.quantity, 0), 
+    [cartItems]
+  )
+  
+  const cartTotal = useMemo(() => 
+    cartItems.reduce((total, item) => {
+      const price = item.products.sale_price || item.products.price
+      return total + (price * item.quantity)
+    }, 0), 
+    [cartItems]
+  )
 
-  const value: CartContextType = {
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const value: CartContextType = useMemo(() => ({
     cartItems,
     cartCount,
     cartTotal,
@@ -208,7 +278,7 @@ export function CartProvider({ children }: CartProviderProps) {
     removeFromCart,
     clearCart,
     refreshCart,
-  }
+  }), [cartItems, cartCount, cartTotal, isLoading, addToCart, updateCartItem, removeFromCart, clearCart, refreshCart])
 
   return (
     <CartContext.Provider value={value}>

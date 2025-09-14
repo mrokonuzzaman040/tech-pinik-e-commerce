@@ -209,6 +209,21 @@ CREATE INDEX IF NOT EXISTS idx_districts_name ON districts(name);
 CREATE INDEX IF NOT EXISTS idx_districts_is_active ON districts(is_active);
 CREATE INDEX IF NOT EXISTS idx_promotional_features_active ON promotional_features(is_active, display_order);
 
+-- Additional performance indexes
+CREATE INDEX IF NOT EXISTS idx_cart_items_session_id ON cart_items(session_id);
+CREATE INDEX IF NOT EXISTS idx_cart_items_product_id ON cart_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_cart_items_created_at ON cart_items(created_at);
+CREATE INDEX IF NOT EXISTS idx_products_price ON products(price);
+CREATE INDEX IF NOT EXISTS idx_products_stock_quantity ON products(stock_quantity);
+CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
+
+-- Composite indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_products_category_active ON products(category_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_products_featured_active ON products(is_featured, is_active);
+CREATE INDEX IF NOT EXISTS idx_products_category_featured ON products(category_id, is_featured, is_active);
+CREATE INDEX IF NOT EXISTS idx_orders_customer_status ON orders(customer_id, status);
+CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
